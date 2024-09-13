@@ -1,0 +1,13 @@
+1.housturn 2013
+lr    num_groups     group_size
+ 5e-3     100             3
+Overall Accuracy (OA): 0.8450
+Average Accuracy (AA): 0.8747
+Kappa Coefficient: 0.8330
+
+
+
+
+
+
+2.haihongshidi
