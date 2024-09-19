@@ -183,33 +183,6 @@ class SCConv(nn.Module):
         out = torch.cat((out1, out2), 1)
         return out
 
-class External_attention(nn.Module):
-    def __init__(self, c):
-        super(External_attention, self).__init__()
-        self.conv1 = nn.Conv2d(c, c, 1)
-        self.k = c // 4
-        self.linear_0 = nn.Conv1d(c, self.k, 1, bias=False)
-        self.linear_1 = nn.Conv1d(self.k, c, 1, bias=False)
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(c, c, 1, bias=False),
-            nn.BatchNorm2d(c))
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        idn = x
-        x = self.conv1(x)
-        b, c, h, w = x.size()
-        x = x.view(b, c, h * w)
-        attn = self.linear_0(x)
-        attn = F.softmax(attn, dim=-1)
-        attn = attn / (1e-9 + attn.sum(dim=1, keepdims=True))
-        x = self.linear_1(attn)
-        x = x.view(b, c, h, w)
-        x = self.conv2(x)
-        x = x + idn
-        x = self.relu(x)
-        return x
-
 
 class SSM(nn.Module):
     def __init__(self, input_dim, hidden_dim):
@@ -287,90 +260,6 @@ class GroupWiseSpectralEmbeddingSSM(nn.Module):
 
 
 
-
-# class HSIVimBlock(nn.Module):
-#     def __init__(self, spatial_dim, num_bands, hidden_dim, output_dim, delta_param_init, num_groups, group_size):
-#         super(HSIVimBlock, self).__init__()
-#         self.spatial_dim = spatial_dim
-#         self.num_bands = num_bands
-#         self.hidden_dim = hidden_dim
-#
-#         # 局部特征提取模块
-#         self.gse = GroupWiseSpectralEmbeddingSSM(num_groups, group_size, in_channels=1, hidden_dim=hidden_dim)
-#
-#         # # 全局特征提取模块
-#         # self.norm = nn.LayerNorm(num_bands * spatial_dim * spatial_dim)
-#         # self.linear_x = nn.Linear(num_bands * spatial_dim * spatial_dim, hidden_dim)
-#         # self.linear_z = nn.Linear(num_bands * spatial_dim * spatial_dim, hidden_dim)
-#         #
-#         # self.forward_conv1d = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
-#         # self.backward_conv1d = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
-#         #
-#         # self.A = nn.Parameter(torch.randn(hidden_dim, hidden_dim))
-#         # self.B = nn.Parameter(torch.randn(hidden_dim, hidden_dim))
-#         # self.delta_param = nn.Parameter(torch.full((hidden_dim,), delta_param_init))
-#         #
-#         # self.linear_forward = nn.Linear(hidden_dim, output_dim)
-#         # self.linear_backward = nn.Linear(hidden_dim, output_dim)
-#
-#     def forward(self, x):
-#         Batch, H, W, Bands = x.shape  # 获取输入的形状 [Batch, Height, Width, Bands]
-#
-#         # 应用局部特征提取
-#         local_features = self.gse(x)  # 提取局部特征
-#
-#         # 将局部特征展平成一维向量
-#         local_features_flattened = local_features.reshape(Batch, -1)  # 展平为 [Batch, hidden_dim*H*W]
-#
-#         # # # 进行 LayerNorm 处理
-#         # global_features = x.reshape(Batch, -1)  # 展平为 [Batch, Bands*H*W]
-#         # expected_shape = self.num_bands * self.spatial_dim * self.spatial_dim
-#         # if global_features.shape[1] != expected_shape:
-#         #     raise ValueError(f"Expected input shape [{Batch}, {expected_shape}], but got {global_features.shape}")
-#         #
-#         # global_features = self.norm(global_features)
-#         #
-#         # # 投影到隐藏维度
-#         # x_proj = self.linear_x(global_features)
-#         # z_proj = self.linear_z(global_features)
-#         #
-#         # # 调整形状以适应 Conv1d
-#         # x_proj = x_proj.view(Batch, self.hidden_dim, -1)
-#         # z_proj = z_proj.view(Batch, self.hidden_dim, -1)
-#         # # 翻转 z_proj 以用于后向处理
-#         # z_proj_reversed = torch.flip(z_proj, dims=[-1])
-#         #
-#         # # 双向 Conv1d 处理
-#         # x_forward = F.silu(self.forward_conv1d(x_proj))
-#         # x_backward = F.silu(self.backward_conv1d(z_proj_reversed))
-#         #
-#         # # 正确应用 delta 参数
-#         # delta_expanded = self.delta_param.unsqueeze(0).unsqueeze(2)
-#         #
-#         # # 进行 SSM 处理，分别使用原始和翻转的输入用于前向和后向路径
-#         # forward_ssm_output = torch.tanh(self.forward_conv1d(x_forward) + self.A * delta_expanded)
-#         # backward_ssm_output = torch.tanh(self.backward_conv1d(x_backward) + self.B * delta_expanded)
-#         #
-#         # # 将前向和后向输出组合为一个表示
-#         # forward_reduced = forward_ssm_output.mean(dim=2)
-#         # backward_reduced = backward_ssm_output.mean(dim=2)
-#         #
-#         # # 将减少的前向和后向路径组合
-#         # y_forward = self.linear_forward(forward_reduced)
-#         # y_backward = self.linear_backward(backward_reduced)
-#         #
-#         # # 元素级求和前向和后向输出
-#         # global_features_combined = y_forward + y_backward
-#
-#         # 将局部特征展平并投影到全局特征的维度
-#         local_features_flattened_proj = nn.Linear(local_features_flattened.shape[1], self.hidden_dim).to(x.device)(
-#             local_features_flattened)
-#
-#         # 将局部特征直接与全局特征相加
-#         # output = global_features_combined + local_features_flattened_proj
-#         output = local_features_flattened_proj
-#
-#         return output
 
 
 class GroupWiseSpectralEmbedding(nn.Module):
@@ -573,18 +462,6 @@ class HSIClassifier(nn.Module):
 
 
 
-
-# class HSIClassificationMambaModel(nn.Module):
-#     def __init__(self, spatial_dim, num_bands, hidden_dim, output_dim, delta_param_init, num_classes, num_groups, group_size):
-#         super(HSIClassificationMambaModel, self).__init__()
-#         self.vim_block = HSIVimBlock(spatial_dim, num_bands, hidden_dim, output_dim, delta_param_init, num_groups, group_size)
-#         self.output_dim = output_dim  # Save output_dim as an attribute of the class
-#
-#     def forward(self, x):
-#         x = self.vim_block(x)
-#         x = x.view(-1, self.output_dim, 1, 1)  # Reshape to include spatial dimensions if needed
-#         x = torch.flatten(x, start_dim=1)
-#         return x
 
 class HSIMSINet(nn.Module):
     def __init__(self, hsi_channels, msi_channels, hidden_size, block, num_parallel, num_reslayer=2, num_classes=16, bn_threshold=2e-2):
